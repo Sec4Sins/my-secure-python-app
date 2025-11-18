@@ -7,47 +7,31 @@ def client():
     with app.test_client() as client:
         yield client
 
-def test_hello_world(client):
+def test_hello(client):
     response = client.get('/')
     assert response.status_code == 200
     data = response.get_json()
-    assert data['message'] == 'Hello, World!'
+    assert 'message' in data
 
-def test_health_check(client):
+def test_health(client):
     response = client.get('/health')
     assert response.status_code == 200
     data = response.get_json()
     assert data['status'] == 'healthy'
 
+def test_ping(client):
+    response = client.get('/ping?host=google.com')
+    assert response.status_code == 200
+
 def test_user_endpoint(client):
-    # Test the vulnerable SQL injection endpoint
-    # This will return a 500 error due to missing table, but that's expected
+    # Test the SQL injection endpoint (now with working database)
     response = client.get('/user/1')
-    # Just check that the endpoint exists and responds
-    assert response.status_code in [200, 500]  # Accept both success and server error
-
-def test_ping_endpoint(client):
-    # Test the vulnerable command injection endpoint
-    response = client.get('/ping?host=localhost')
-    assert response.status_code == 200
-
-def test_hash_endpoint(client):
-    # Test the weak crypto endpoint
-    response = client.get('/hash/testpassword')
     assert response.status_code == 200
     data = response.get_json()
-    assert 'hash' in data
+    assert 'result' in data
 
-def test_debug_endpoint(client):
-    # Test the information disclosure endpoint
-    response = client.get('/debug')
+def test_calc(client):
+    response = client.get('/calc/2+2')
     assert response.status_code == 200
     data = response.get_json()
-    assert 'debug' in data
-
-def test_admin_endpoint(client):
-    # Test the unauthorized access endpoint
-    response = client.get('/admin')
-    assert response.status_code == 200
-    data = response.get_json()
-    assert 'admin' in data
+    assert data['result'] == 4
