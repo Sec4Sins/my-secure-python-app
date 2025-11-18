@@ -1,145 +1,142 @@
-name: CI/CD Pipeline with Security Scanning
+name: Simple CI/CD with Security Scanning
 
-# When to run this pipeline
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
-# Define the jobs to run
+# Add permissions for security scanning
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
 jobs:
-  # Job 1: Test the application
   test:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4.3.1
+    - uses: actions/checkout@v4
     
-    - name: Set up Python 3.9
-      uses: actions/setup-python@v6.0.0
+    - name: Set up Python
+      uses: actions/setup-python@v5
       with:
         python-version: '3.9'
     
-    - name: Install dependencies (direct method)
+    - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        python -m pip install Flask==2.3.3 pytest==7.4.2 pytest-flask==1.2.0 requests==2.31.0
-        echo "=== Installed packages ==="
-        python -m pip list
+        pip install Flask pytest pytest-flask
     
-    - name: Run tests (allow failures for demo)
-      run: |
-        python -m pytest -v --tb=short || echo "Some tests failed, but continuing pipeline for security demo"
-    
-    - name: Test application startup
-      run: |
-        python app.py &
-        APP_PID=$!
-        sleep 3
-        curl -f http://localhost:5000/health || echo "Health check failed"
-        kill $APP_PID || true
+    - name: Run tests
+      run: pytest -v
 
-  # Job 2: Security scanning with Semgrep
   security-scan:
     runs-on: ubuntu-latest
     needs: test
-    if: always()  # Run even if tests fail
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
     
-    - name: Run Semgrep (Community Rules)
+    - name: Run Semgrep
       run: |
         pip install semgrep
-        echo "=== Running Semgrep Security Scan ==="
+        echo "=== RUNNING SEMGREP SECURITY SCAN ==="
         semgrep --config=auto --verbose . || true
-        echo "=== Generating JSON and SARIF reports ==="
+        echo ""
+        echo "=== GENERATING REPORTS ==="
         semgrep --config=auto --json --output=semgrep-results.json . || true
         semgrep --config=auto --sarif --output=semgrep.sarif . || true
-        echo "=== Semgrep scan completed ==="
-        echo "Found issues:" 
-        cat semgrep-results.json | grep -o '"message":*' | head -10 || echo "No issues found or error reading results"
+        echo ""
+        echo "=== SECURITY FINDINGS SUMMARY ==="
+        if [ -f semgrep-results.json ]; then
+          echo "JSON report generated successfully"
+          cat semgrep-results.json | head -50
+        else
+          echo "No JSON report found"
+        fi
     
-    - name: Upload SARIF file
-      uses: github/codeql-action/upload-sarif@v2
+    - name: Upload SARIF to GitHub Security
+      uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: semgrep.sarif
       if: always() && hashFiles('semgrep.sarif') != ''
     
-    - name: Upload Semgrep results
+    - name: Upload security results
       uses: actions/upload-artifact@v4
       with:
-        name: semgrep-results
-        path: semgrep-results.json
+        name: security-results
+        path: |
+          semgrep-results.json
+          semgrep.sarif
       if: always()
 
-  # Job 3: Dependency scanning
   dependency-scan:
     runs-on: ubuntu-latest
     needs: test
-    if: always()  # Run even if tests fail
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.9'
     
-    - name: Install dependencies and run security scan
+    - name: Install and scan dependencies
       run: |
-        python -m pip install --upgrade pip
-        python -m pip install safety Flask==2.3.3 pytest==7.4.2 pytest-flask==1.2.0 requests==2.31.0
-        echo "=== Running dependency vulnerability scan ==="
-        safety check --json --output safety-report.json || true
-        echo "Dependency scan completed"
-        echo "Safety report summary:"
-        cat safety-report.json | head -20 || echo "No vulnerabilities found or error reading report"
+        pip install safety Flask pytest
+        echo "=== RUNNING DEPENDENCY VULNERABILITY SCAN ==="
+        
+        # Method 1: Try new Safety syntax
+        safety check --format json > safety-report.json 2>&1 || echo "Method 1 failed, trying alternative"
+        
+        # Method 2: Try older Safety syntax if method 1 fails
+        if [ ! -s safety-report.json ]; then
+          safety check --json > safety-report.json 2>&1 || echo "Method 2 failed, trying basic scan"
+        fi
+        
+        # Method 3: Basic safety check with text output
+        if [ ! -s safety-report.json ]; then
+          echo "=== BASIC SAFETY CHECK ===" > safety-report.txt
+          safety check >> safety-report.txt 2>&1 || echo "All methods failed, but continuing..."
+        fi
+        
+        echo "=== DEPENDENCY SCAN RESULTS ==="
+        if [ -f safety-report.json ] && [ -s safety-report.json ]; then
+          echo "JSON report found:"
+          cat safety-report.json
+        elif [ -f safety-report.txt ]; then
+          echo "Text report found:"
+          cat safety-report.txt
+        else
+          echo "No dependency vulnerabilities found or safety tool unavailable"
+        fi
     
-    - name: Upload dependency scan results
+    - name: Upload dependency results
       uses: actions/upload-artifact@v4
       with:
         name: dependency-scan-results
-        path: safety-report.json
+        path: |
+          safety-report.json
+          safety-report.txt
       if: always()
 
-  # Job 4: Build and package
   build:
     runs-on: ubuntu-latest
     needs: [test, security-scan, dependency-scan]
-    if: always()  # Run even if previous jobs fail
-    
+    if: always()
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    
-    - name: Install dependencies for build
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install Flask==2.3.3 requests==2.31.0
+    - uses: actions/checkout@v4
     
     - name: Build application
       run: |
-        echo "Building application..."
+        echo "=== BUILDING APPLICATION ==="
         mkdir -p dist
-        cp -r *.py dist/ 2>/dev/null || true
-        echo "Flask==2.3.3" > dist/requirements.txt
-        echo "requests==2.31.0" >> dist/requirements.txt
+        cp *.py dist/
+        echo "Flask>=2.0.0" > dist/requirements.txt
         echo "Build completed successfully!"
         ls -la dist/
     
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: application-build
+        name: build-artifacts
         path: dist/
