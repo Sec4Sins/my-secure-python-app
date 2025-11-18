@@ -15,10 +15,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v4.3.1
     
     - name: Set up Python 3.9
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v6.0.0
       with:
         python-version: '3.9'
     
@@ -70,7 +70,7 @@ jobs:
       if: always() && hashFiles('semgrep.sarif') != ''
     
     - name: Upload Semgrep results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: semgrep-results
         path: semgrep-results.json
@@ -102,7 +102,7 @@ jobs:
         cat safety-report.json | head -20 || echo "No vulnerabilities found or error reading report"
     
     - name: Upload dependency scan results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: dependency-scan-results
         path: safety-report.json
@@ -139,7 +139,7 @@ jobs:
         ls -la dist/
     
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: application-build
         path: dist/
