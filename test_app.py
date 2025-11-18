@@ -18,3 +18,20 @@ def test_health_check(client):
     assert response.status_code == 200
     data = response.get_json()
     assert data['status'] == 'healthy'
+
+def test_user_endpoint(client):
+    # Test the vulnerable SQL injection endpoint
+    response = client.get('/user/1')
+    assert response.status_code == 200
+
+def test_ping_endpoint(client):
+    # Test the vulnerable command injection endpoint
+    response = client.get('/ping?host=localhost')
+    assert response.status_code == 200
+
+def test_hash_endpoint(client):
+    # Test the weak crypto endpoint
+    response = client.get('/hash/testpassword')
+    assert response.status_code == 200
+    data = response.get_json()
+    assert 'hash' in data
